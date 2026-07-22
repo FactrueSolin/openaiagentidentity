@@ -64,6 +64,40 @@ application/
 
 Copying and running the binary without `target/site` is not a complete deployment.
 
+### GitHub Actions Ubuntu package
+
+Every push runs the `Build Ubuntu package` workflow. It builds and tests the complete Web application on Ubuntu 22.04 for x86_64, produces a statically linked musl server binary, performs a packaged-server smoke test, and uploads an artifact named `agentidentity-web-linux-x86_64-<commit-sha>`.
+
+Download the artifact from the commit's workflow run in the repository's **Actions** tab. Artifacts are retained for 14 days. GitHub downloads the artifact as an outer ZIP file; extract it first:
+
+```sh
+unzip agentidentity-web-linux-x86_64-COMMIT_SHA.zip
+```
+
+The ZIP contains:
+
+```text
+agentidentity-web-linux-x86_64.tar.gz
+agentidentity-web-linux-x86_64.tar.gz.sha256
+```
+
+Verify and extract the deployment archive on an Ubuntu x86_64 server:
+
+```sh
+sha256sum --check agentidentity-web-linux-x86_64.tar.gz.sha256
+tar -xzf agentidentity-web-linux-x86_64.tar.gz
+cd agentidentity-web-linux-x86_64
+cp .env.example .env
+```
+
+Edit `.env`, then start the server from that directory:
+
+```sh
+./agentidentity-web
+```
+
+The tarball includes all runtime application files: a statically linked x86_64 musl executable, `.env.example`, hydrated WebAssembly/JavaScript, styles, and fonts in the required `target/site` layout. The target Ubuntu server does not need Rust, `cargo-leptos`, glibc, or OpenSSL runtime libraries. Other CPU architectures are not produced by this workflow.
+
 ### Configuration
 
 The Web server reads process environment variables first, then a `.env` file in its current working directory, then built-in defaults: environment > `.env` > default.

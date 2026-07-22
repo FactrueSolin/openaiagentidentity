@@ -64,6 +64,40 @@ application/
 
 只复制并运行二进制文件而不提供 `target/site`，不能构成完整部署。
 
+### GitHub Actions Ubuntu 部署包
+
+每次 `push` 都会触发 `Build Ubuntu package` 工作流。它会在 Ubuntu 22.04 上构建并测试面向 x86_64 的完整 Web 应用，生成静态链接的 musl 服务端二进制，对打包后的服务器执行冒烟测试，然后上传名为 `agentidentity-web-linux-x86_64-<commit-sha>` 的 artifact。
+
+在仓库的 **Actions** 页面打开对应 commit 的工作流运行记录并下载 artifact。Artifact 保留 14 天。GitHub 会把 artifact 下载为外层 ZIP 文件，应先解压：
+
+```sh
+unzip agentidentity-web-linux-x86_64-COMMIT_SHA.zip
+```
+
+ZIP 内包含：
+
+```text
+agentidentity-web-linux-x86_64.tar.gz
+agentidentity-web-linux-x86_64.tar.gz.sha256
+```
+
+在 Ubuntu x86_64 服务器上校验并解压部署包：
+
+```sh
+sha256sum --check agentidentity-web-linux-x86_64.tar.gz.sha256
+tar -xzf agentidentity-web-linux-x86_64.tar.gz
+cd agentidentity-web-linux-x86_64
+cp .env.example .env
+```
+
+编辑 `.env` 后，从该目录启动服务器：
+
+```sh
+./agentidentity-web
+```
+
+该 tar 包包含运行时所需的全部应用文件：静态链接的 x86_64 musl 可执行文件、`.env.example`，以及按程序所需 `target/site` 布局放置的 Hydration WebAssembly/JavaScript、样式和字体。目标 Ubuntu 服务器不需要安装 Rust、`cargo-leptos`、glibc 或 OpenSSL 运行库。该工作流不会生成其他 CPU 架构的产物。
+
 ### 配置
 
 Web 服务器依次读取当前进程的环境变量、当前工作目录中的 `.env` 文件和内置默认值，优先级为：环境变量 > `.env` > 默认值。
