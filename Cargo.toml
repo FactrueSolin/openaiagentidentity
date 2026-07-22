@@ -2,18 +2,105 @@
 name = "agentidentity"
 version = "0.1.0"
 edition = "2024"
+default-run = "agentidentity"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "agentidentity"
+path = "src/main.rs"
+required-features = ["cli"]
+
+[[bin]]
+name = "agentidentity-web"
+path = "src/bin/agentidentity-web.rs"
+required-features = ["ssr"]
 
 [dependencies]
 anyhow = "1.0"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 ed25519-dalek = { version = "2.2", features = ["pkcs8", "rand_core"] }
+leptos = { version = "=0.8.20", default-features = false }
 rand_core = { version = "0.6", features = ["getrandom"] }
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
-
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-zeroize = "1.8"
+zeroize = { version = "1.8", features = ["derive"] }
+
+any_spawner = { version = "0.3", optional = true }
+axum = { version = "0.8", optional = true }
+getrandom = { version = "0.2", features = ["js"], optional = true }
+
+http = { version = "1.3", optional = true }
+js-sys = { version = "0.3", optional = true }
+leptos_axum = { version = "=0.8.10", optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+tokio = { version = "1.47", features = ["macros", "net", "rt-multi-thread", "signal"], optional = true }
+tower = { version = "0.5", features = ["util"], optional = true }
+tower-http = { version = "0.6", features = ["limit", "set-header"], optional = true }
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"], optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+web-sys = { version = "0.3", features = [
+    "Blob",
+    "BlobPropertyBag",
+    "Clipboard",
+    "Document",
+    "Element",
+    "Headers",
+    "HtmlAnchorElement",
+    "HtmlElement",
+    "Navigator",
+    "Node",
+    "RequestCache",
+    "RequestCredentials",
+    "RequestInit",
+    "Response",
+    "Url",
+    "Window",
+], optional = true }
+
+[features]
+default = ["cli"]
+cli = ["dep:reqwest", "reqwest/blocking"]
+hydrate = [
+    "dep:getrandom",
+    "dep:js-sys",
+    "dep:wasm-bindgen",
+    "dep:wasm-bindgen-futures",
+    "dep:web-sys",
+    "leptos/hydrate",
+]
+ssr = [
+    "dep:any_spawner",
+    "dep:axum",
+    "dep:http",
+    "dep:leptos_axum",
+    "dep:reqwest",
+    "dep:tokio",
+    "dep:tower",
+    "dep:tower-http",
+    "dep:tracing",
+    "dep:tracing-subscriber",
+    "leptos/ssr",
+]
 
 [dev-dependencies]
 tempfile = "3.20"
+
+[package.metadata.leptos]
+output-name = "agentidentity-web"
+site-root = "target/site"
+site-pkg-dir = "pkg"
+assets-dir = "public"
+style-file = "style/main.css"
+site-addr = "127.0.0.1:3000"
+reload-port = 3001
+bin-target = "agentidentity-web"
+bin-exe-name = "agentidentity-web"
+bin-features = ["ssr"]
+bin-default-features = false
+lib-features = ["hydrate"]
+lib-default-features = false

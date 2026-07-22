@@ -12,7 +12,16 @@ use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
-const OPENAI_AGENT_REGISTRATION_BASE_URL: &str = "https://auth.openai.com/api/accounts";
+pub mod app;
+pub mod web_types;
+
+#[cfg(feature = "ssr")]
+pub mod web_config;
+#[cfg(feature = "ssr")]
+pub mod web_server;
+
+#[cfg(any(feature = "cli", feature = "ssr"))]
+pub(crate) const OPENAI_AGENT_REGISTRATION_BASE_URL: &str = "https://auth.openai.com/api/accounts";
 const CHATGPT_SESSION_URL: &str = "https://chatgpt.com/api/auth/session";
 
 pub fn read_access_token(
@@ -39,11 +48,13 @@ pub fn read_access_token(
     Ok(token)
 }
 
+#[cfg(feature = "cli")]
 struct ProxyConfiguration {
     proxy: Option<reqwest::Proxy>,
     description: String,
 }
 
+#[cfg(feature = "cli")]
 fn proxy_configuration_from(
     is_cgi: bool,
     mut get_env: impl FnMut(&str) -> Option<String>,
@@ -69,6 +80,7 @@ fn proxy_configuration_from(
         .unwrap_or_else(|| direct_proxy_configuration("no valid HTTPS proxy environment variable"))
 }
 
+#[cfg(feature = "cli")]
 fn direct_proxy_configuration(reason: &str) -> ProxyConfiguration {
     ProxyConfiguration {
         proxy: None,
@@ -76,6 +88,7 @@ fn direct_proxy_configuration(reason: &str) -> ProxyConfiguration {
     }
 }
 
+#[cfg(feature = "cli")]
 fn first_environment_value(
     get_env: &mut impl FnMut(&str) -> Option<String>,
     names: &[&'static str],
@@ -85,6 +98,7 @@ fn first_environment_value(
         .find_map(|&name| get_env(name).map(|value| (name, value)))
 }
 
+#[cfg(feature = "cli")]
 fn first_proxy_configuration(
     get_env: &mut impl FnMut(&str) -> Option<String>,
     names: &[&'static str],
@@ -103,6 +117,7 @@ fn first_proxy_configuration(
     })
 }
 
+#[cfg(feature = "cli")]
 fn normalize_proxy_url(value: &str) -> Option<String> {
     let value = value.trim();
     if value.is_empty() {
@@ -114,6 +129,7 @@ fn normalize_proxy_url(value: &str) -> Option<String> {
     }
 }
 
+#[cfg(feature = "cli")]
 fn safe_proxy_url(url: &reqwest::Url) -> String {
     let credentials = if url.username().is_empty() && url.password().is_none() {
         ""
@@ -132,6 +148,7 @@ fn safe_proxy_url(url: &reqwest::Url) -> String {
     format!("{}://{credentials}{host}{port}", url.scheme())
 }
 
+#[cfg(feature = "cli")]
 fn no_proxy_bypasses_host(value: &str, host: &str) -> bool {
     value.split(',').map(str::trim).any(|entry| {
         if entry == "*" {
@@ -193,6 +210,13 @@ pub struct GeneratedKeyMaterial {
     public_key_ssh: String,
 }
 
+impl GeneratedKeyMaterial {
+    pub fn public_key_ssh(&self) -> &str {
+        &self.public_key_ssh
+    }
+}
+
+#[cfg(feature = "cli")]
 #[derive(Serialize)]
 struct RegisterAgentRequest<'a> {
     abom: AgentBillOfMaterials,
@@ -201,6 +225,7 @@ struct RegisterAgentRequest<'a> {
     ttl: Option<u64>,
 }
 
+#[cfg(feature = "cli")]
 #[derive(Serialize)]
 struct AgentBillOfMaterials {
     agent_version: &'static str,
@@ -208,6 +233,7 @@ struct AgentBillOfMaterials {
     running_location: &'static str,
 }
 
+#[cfg(feature = "cli")]
 #[derive(Deserialize)]
 struct RegisterAgentResponse {
     agent_runtime_id: String,
@@ -255,6 +281,7 @@ fn append_ssh_string(output: &mut Vec<u8>, value: &[u8]) {
     output.extend_from_slice(value);
 }
 
+#[cfg(feature = "cli")]
 pub fn build_registration_client() -> Result<(reqwest::blocking::Client, String)> {
     let proxy_configuration =
         proxy_configuration_from(std::env::var_os("REQUEST_METHOD").is_some(), |name| {
@@ -264,6 +291,7 @@ pub fn build_registration_client() -> Result<(reqwest::blocking::Client, String)
     Ok((client, proxy_configuration.description))
 }
 
+#[cfg(feature = "cli")]
 fn build_registration_client_with_https_only(
     https_only: bool,
     proxy: Option<reqwest::Proxy>,
@@ -280,6 +308,7 @@ fn build_registration_client_with_https_only(
     builder.build().context("failed to initialize HTTPS client")
 }
 
+#[cfg(feature = "cli")]
 pub fn register_with_openai(
     client: &reqwest::blocking::Client,
     access_token: &str,
@@ -295,6 +324,7 @@ pub fn register_with_openai(
     )
 }
 
+#[cfg(feature = "cli")]
 fn register_agent_identity(
     client: &reqwest::blocking::Client,
     base_url: &str,
@@ -490,7 +520,7 @@ pub fn parse_account_claims(token: &str) -> Result<AccountClaims> {
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "cli"))]
 mod tests {
     use base64::Engine as _;
     use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
@@ -667,7 +697,10 @@ mod tests {
             String::from_utf8(request).unwrap()
         });
         let key_material = generate_key_material().unwrap();
-        let client = reqwest::blocking::Client::new();
+        let client = reqwest::blocking::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap();
 
         let runtime_id = register_agent_identity(
             &client,
@@ -898,7 +931,10 @@ mod tests {
             .unwrap();
         });
         let key_material = generate_key_material().unwrap();
-        let client = reqwest::blocking::Client::new();
+        let client = reqwest::blocking::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap();
         let token = "client-secret-token";
 
         let error = register_agent_identity(

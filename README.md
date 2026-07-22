@@ -2,9 +2,118 @@
 
 English | [简体中文](README.zh.md)
 
-`agentidentity` is a small Rust command-line program that registers one OpenAI Agent Identity Runtime from a manually supplied ChatGPT JWT access token. It extracts the required account metadata, generates a local Ed25519 key pair, registers the public key with OpenAI, and writes a reusable Agent Identity JSON file.
+`agentidentity` provides a Web application and a command-line application for registering an OpenAI Agent Runtime from a manually supplied ChatGPT JWT access token and producing a reusable Agent Identity JSON document.
 
-## What it does
+## Web application
+
+### Architecture and data boundary
+
+The Web application uses Leptos on Axum with server-side rendering (SSR) followed by browser hydration. Axum renders the initial page and serves the generated JavaScript, WebAssembly, and CSS assets; the hydrated Leptos frontend then handles the interactive identity-generation flow.
+
+The browser generates the Ed25519 key pair and assembles the final identity document. Only the access token and public key are sent to the application server. The server handles them transiently for the registration request, forwards the token and public key to OpenAI over HTTPS, and returns the runtime and account metadata needed by the browser. The private key never leaves the browser and the server does not create the final identity document.
+
+### Requirements
+
+- A Rust toolchain with Cargo installed. The current stable Rust release is recommended.
+- [`cargo-leptos`](https://github.com/leptos-rs/cargo-leptos):
+
+  ```sh
+  cargo install cargo-leptos --locked
+  ```
+
+- The WebAssembly compilation target:
+
+  ```sh
+  rustup target add wasm32-unknown-unknown
+  ```
+
+- A modern browser with WebAssembly, JavaScript modules, Fetch, Blob downloads, and the Clipboard API. Current versions of Chrome, Edge, Firefox, and Safari are recommended. Clipboard access may require user permission and a secure context such as `https://` or localhost.
+
+### Development
+
+From the repository directory, start the development server and asset watcher:
+
+```sh
+cargo leptos watch
+```
+
+Then open <http://127.0.0.1:3000>. Changes to the Rust frontend, server, styles, and public assets are rebuilt automatically.
+
+### Release build and server
+
+Build the SSR server, hydrated frontend, and site assets:
+
+```sh
+cargo leptos build --release
+```
+
+From the repository directory, run the release server with the generated `target/site` directory present:
+
+```sh
+./target/release/agentidentity-web
+```
+
+The server binary is `target/release/agentidentity-web` and the browser assets are under `target/site`. A deployment must include both. If the binary is copied elsewhere, run it from a directory with this layout:
+
+```text
+application/
+├── agentidentity-web
+└── target/
+    └── site/
+```
+
+Copying and running the binary without `target/site` is not a complete deployment.
+
+### Configuration
+
+The Web server reads process environment variables first, then a `.env` file in its current working directory, then built-in defaults: environment > `.env` > default.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `HOST` | `127.0.0.1` | Listener IP address or hostname, without a port. |
+| `PORT` | `3000` | Listener TCP port. |
+| `PROXY_URL` | blank | Optional single `http://` or `https://` proxy used for all server outbound requests. |
+
+Example `.env`:
+
+```dotenv
+HOST=127.0.0.1
+PORT=3000
+PROXY_URL=http://127.0.0.1:7890
+```
+
+A blank `PROXY_URL` explicitly selects a direct connection. In particular, a blank process environment value takes precedence over a proxy in `.env`. The Web server deliberately ignores `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY`; only `PROXY_URL` controls its outbound proxy. This differs from the CLI proxy behavior documented below.
+
+At startup, the server logs the effective `HOST`, `PORT`, and `PROXY_URL` and the source of each value. Proxy credentials and URL details are redacted in the log; a direct connection is logged as `direct`.
+
+### HTTP API
+
+The hydrated frontend calls:
+
+```text
+POST /api/agent-runtimes
+```
+
+This is a same-origin, frontend-oriented registration endpoint. It transiently accepts the access token and browser-generated public key and returns the registration result needed by the frontend. It is not a complete or general-purpose identity API: it does not generate or retain the private key, assemble the final identity document, or provide identity-management operations.
+
+### Copy and download
+
+After successful registration, the browser displays the final JSON document:
+
+- **Copy** writes the complete JSON to the system clipboard. The browser may ask for clipboard permission; use **Download** if clipboard access is unavailable.
+- **Download** creates the JSON file entirely in the browser and saves it using the generated, sanitized identity filename. The server does not receive the private key or downloaded document.
+
+Both outputs contain a reusable private key. Treat copied clipboard contents and downloaded files as secrets.
+
+### Public production deployment
+
+The Axum server listens over plain HTTP. Any publicly reachable production deployment must put it behind an HTTPS reverse proxy and serve the page, assets, and `/api/agent-runtimes` from the same origin. Configure the reverse proxy, observability stack, and upstream services not to log request bodies: the API request body contains the access token and public key. Keep `target/site` beside the deployed server as described above.
+
+## CLI application
+
+`agentidentity` is also a small Rust command-line program that registers one OpenAI Agent Runtime from a manually supplied ChatGPT JWT access token. It extracts the required account metadata, generates a local Ed25519 key pair, registers the public key with OpenAI, and writes a reusable Agent Identity JSON file.
+
+### What it does
 
 1. Reads one access token from a visible terminal prompt.
 2. Validates the three-part JWT structure, encoding, JSON claims, and expiration time.
@@ -15,7 +124,7 @@ English | [简体中文](README.zh.md)
 
 The access token is never accepted as a command-line argument and is not written to the output file. JWT claims are decoded locally without signature verification; token authenticity is enforced by the authenticated HTTPS registration request.
 
-## Requirements
+### Requirements
 
 - A Rust toolchain with Cargo installed. The current stable Rust release is recommended.
 - A valid, unexpired, three-part ChatGPT JWT access token for an account you are authorized to use.
@@ -27,7 +136,7 @@ The access token is never accepted as a command-line argument and is not written
 
 This program does not perform a ChatGPT login or obtain an access token for you. While signed in to ChatGPT, open <https://chatgpt.com/api/auth/session> in your browser and copy the value of the `accessToken` field from the returned JSON. The token is sensitive and should only be used for an account you are authorized to access.
 
-## Build
+### Build
 
 From the repository directory:
 
@@ -43,15 +152,15 @@ target/release/agentidentity
 
 On Windows, the executable is `target\release\agentidentity.exe`.
 
-## Usage
+### Usage
 
-### Run directly with Cargo
+#### Run directly with Cargo
 
 ```sh
 cargo run --release
 ```
 
-### Run the compiled executable
+#### Run the compiled executable
 
 Linux or macOS:
 
@@ -87,7 +196,7 @@ Created agent-identity-person_example.com-team.json
 
 The output file is created in the directory from which the executable was started, not necessarily beside the executable.
 
-## Using a network proxy
+### Using a network proxy
 
 The HTTP client reads standard proxy environment variables automatically. No command-line proxy option is required. At startup, the program reports the proxy selected for the fixed `auth.openai.com` HTTPS request, for example:
 
@@ -108,7 +217,7 @@ Because the registration endpoint uses HTTPS, `HTTPS_PROXY` is the most relevant
 
 A protocol-specific proxy takes precedence over `ALL_PROXY`. If both uppercase and lowercase forms are present, avoid ambiguity by setting only one form.
 
-### Linux and macOS
+#### Linux and macOS
 
 Use a proxy for one invocation only:
 
@@ -135,7 +244,7 @@ You can use `ALL_PROXY` as a fallback instead:
 ALL_PROXY=http://127.0.0.1:7890 ./target/release/agentidentity
 ```
 
-### Windows PowerShell
+#### Windows PowerShell
 
 Set the proxy for the current PowerShell session:
 
@@ -150,7 +259,7 @@ Remove it afterward:
 Remove-Item Env:HTTPS_PROXY
 ```
 
-### Windows Command Prompt
+#### Windows Command Prompt
 
 ```bat
 set HTTPS_PROXY=http://127.0.0.1:7890
@@ -163,7 +272,7 @@ Clear it afterward:
 set HTTPS_PROXY=
 ```
 
-### Authenticated HTTP proxy
+#### Authenticated HTTP proxy
 
 Credentials can be included in the proxy URL:
 
@@ -176,7 +285,7 @@ Percent-encode special characters in the username or password. For example, `@` 
 
 Be aware that proxy credentials stored in environment variables may be visible to other tools or processes on the same machine. Prefer a local proxy without embedded credentials or a secure credential mechanism when available.
 
-### Important proxy notes
+#### Important proxy notes
 
 - An HTTP proxy URL such as `http://127.0.0.1:7890` is normal for an HTTPS destination: the client asks the proxy to establish an HTTP `CONNECT` tunnel, while TLS still protects the connection to OpenAI.
 - Make sure `auth.openai.com` is not listed in `NO_PROXY`; otherwise the request bypasses the proxy.
@@ -184,7 +293,7 @@ Be aware that proxy credentials stored in environment variables may be visible t
 - This build does not enable Reqwest's optional SOCKS feature. Use an HTTP/HTTPS CONNECT proxy rather than a `socks5://` proxy URL.
 - TLS-intercepting corporate proxies may cause certificate validation errors. Do not disable TLS verification; use a trusted, correctly configured proxy.
 
-## Output file
+### Output file
 
 The generated filename is:
 
@@ -224,7 +333,7 @@ The output format is:
 
 Version 0.1 does not create or include a `task_id`.
 
-## Security notes
+### Security notes
 
 - Token input is visible. Run the program in a private terminal, clear the terminal afterward if needed, and do not expose the token through screen sharing, recording, screenshots, issue reports, or command-line arguments.
 - The token is kept in zeroizing memory while the program runs and is not saved in the generated JSON.
@@ -233,37 +342,38 @@ Version 0.1 does not create or include a `task_id`.
 - Output files and temporary output files are ignored by this repository's `.gitignore`, but do not rely on Git ignore rules as access control.
 - HTTP error response bodies are not displayed because they may contain sensitive information.
 
-## Troubleshooting
+### Troubleshooting
 
-### `token must be a three-part JWT`
+#### `token must be a three-part JWT`
 
 The entered value is empty, truncated, quoted, or is not a JWT access token. While signed in to ChatGPT, open <https://chatgpt.com/api/auth/session>, copy the complete `accessToken` value in `header.payload.signature` form, and enter it without quotes.
 
-### `token has expired`
+#### `token has expired`
 
 Obtain a new authorized access token and run the program again.
 
-### `token is missing ...`
+#### `token is missing ...`
 
 The JWT does not contain one of the required ChatGPT account claims. Verify that you supplied the correct access token type.
 
-### `failed to send Agent Identity registration request`
+#### `failed to send Agent Identity registration request`
 
 Check network connectivity, DNS, firewall rules, proxy settings, and system time. If using a proxy, verify its address and ensure `auth.openai.com` is not excluded by `NO_PROXY`.
 
-### `Agent Identity registration failed with HTTP 401 Unauthorized`
+#### `Agent Identity registration failed with HTTP 401 Unauthorized`
 
 The token may be invalid, expired, revoked, or not authorized for the registration request. The program deliberately does not print the server response body.
 
-### Certificate or TLS error through a proxy
+#### Certificate or TLS error through a proxy
 
 The proxy may be intercepting TLS with an untrusted certificate. Use a correctly configured trusted proxy; the program does not provide an option to disable certificate verification.
 
-## Development checks
+### Development checks
 
 ```sh
 cargo fmt -- --check
 cargo clippy --all-targets --all-features -- -D warnings
-cargo test
+cargo test --all-features
 cargo build --release
+cargo leptos build --release
 ```

@@ -1,0 +1,103 @@
+@font-face {
+    font-family: "Space Grotesk";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("/fonts/space-grotesk-400.ttf") format("truetype");
+}
+
+@font-face {
+    font-family: "Space Grotesk";
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url("/fonts/space-grotesk-700.ttf") format("truetype");
+}
+
+@font-face {
+    font-family: "IBM Plex Sans";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("/fonts/ibm-plex-sans-400.ttf") format("truetype");
+}
+
+@font-face {
+    font-family: "IBM Plex Sans";
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url("/fonts/ibm-plex-sans-700.ttf") format("truetype");
+}
+
+@font-face {
+    font-family: "JetBrains Mono";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("/fonts/jetbrains-mono-400.ttf") format("truetype");
+}
+
+@font-face {
+    font-family: "JetBrains Mono";
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url("/fonts/jetbrains-mono-700.ttf") format("truetype");
+}
+
+:root {
+    --color-light-bg: oklch(97% 0.009 255);
+    --color-light-surface: oklch(99% 0.006 255);
+    --color-light-surface-hover: oklch(94% 0.014 255);
+    --color-light-ink: oklch(20% 0.025 258);
+    --color-light-muted: oklch(43% 0.026 258);
+    --color-light-rule: oklch(80% 0.025 255);
+    --color-dark-bg: oklch(15% 0.035 258);
+    --color-dark-surface: oklch(20% 0.04 258);
+    --color-dark-ink: oklch(95% 0.012 255);
+    --color-dark-muted: oklch(75% 0.025 255);
+    --color-dark-rule: oklch(34% 0.045 258);
+    --color-accent: oklch(58% 0.21 260);
+    --color-accent-strong: oklch(48% 0.22 260);
+    --color-accent-ink: oklch(98% 0.008 255);
+    --color-focus: oklch(64% 0.2 252);
+    --color-error: oklch(56% 0.2 28);
+    --color-error-surface: oklch(94% 0.035 28);
+    --color-success: oklch(70% 0.14 158);
+    --color-success-surface: oklch(24% 0.05 158);
+    --color-transparent: oklch(0% 0 0 / 0);
+
+    --font-display: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+    --font-body: "IBM Plex Sans", "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", "SFMono-Regular", monospace;
+
+    --space-3xs: 0.125rem;
+    --space-2xs: 0.25rem;
+    --space-xs: 0.5rem;
+    --space-sm: 0.75rem;
+    --space-md: 1rem;
+    --space-lg: 1.5rem;
+    --space-xl: 2.5rem;
+    --space-2xl: 4rem;
+    --space-3xl: 6rem;
+
+    --text-xs: 0.75rem;
+    --text-sm: 0.875rem;
+    --text-base: 1rem;
+    --text-md: 1.25rem;
+
+    --text-xl: 1.953rem;
+    --text-display: clamp(2.35rem, 5vw, 4.75rem);
+
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+    --dur-micro: 120ms;
+    --dur-short: 220ms;
+    --dur-long: 420ms;
+
+    --rule-thin: 0.0625rem;
+    --radius-xs: 0.25rem;
+    --radius-sm: 0.375rem;
+    --z-sticky: 200;
+}

@@ -1,0 +1,17 @@
+{
+  "scanned_at": "2026-07-23",
+  "design_system": null,
+  "font_stack": null,
+  "palette": null,
+  "motion": "motion-cut",
+  "spacing_scale": null,
+  "framework": "Leptos + Axum planned; no frontend files yet",
+  "preserve": [],
+  "introduce": [
+    "design tokens",
+    "typography pairing",
+    "technical macrostructure",
+    "interaction states",
+    "responsive rules"
+  ]
+}
