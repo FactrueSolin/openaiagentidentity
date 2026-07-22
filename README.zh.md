@@ -6,7 +6,7 @@
 
 ## 程序会做什么
 
-1. 通过终端隐藏输入读取一个 Access Token。
+1. 通过终端可见输入读取一个 Access Token。
 2. 检查 JWT 是否为三段式结构，并验证各段编码、JSON Claims 和过期时间。
 3. 提取账号 ID、ChatGPT 用户 ID、邮箱、套餐类型和 FedRAMP 标记。
 4. 在本地随机生成 Ed25519 密钥对。
@@ -25,7 +25,7 @@
   https://auth.openai.com/api/accounts/v1/agent/register
   ```
 
-本程序不会替你登录 ChatGPT，也不会替你获取 Access Token。
+本程序不会替你登录 ChatGPT，也不会替你获取 Access Token。登录 ChatGPT 后，可以在浏览器中打开 <https://chatgpt.com/api/auth/session>，然后从返回的 JSON 中复制 `accessToken` 字段的值。Token 属于敏感凭据，请只使用你有权访问的账号。
 
 ## 构建程序
 
@@ -65,18 +65,22 @@ Windows PowerShell：
 .\target\release\agentidentity.exe
 ```
 
-程序会显示隐藏输入提示：
+程序启动后会先输出 OpenAI HTTPS 请求将使用的网络代理，然后显示 Token 获取说明和输入提示：
 
 ```text
-Authentication token:
+Network proxy: HTTPS_PROXY=http://127.0.0.1:7890
+Get your access token from https://chatgpt.com/api/auth/session while signed in to ChatGPT.
+Paste access token (input is visible):
 ```
 
-粘贴完整的 JWT Access Token，然后按 Enter。输入过程中终端不会显示 Token。请不要在 Token 两侧添加引号。
+先登录 ChatGPT，再打开 <https://chatgpt.com/api/auth/session>，从返回的 JSON 中复制 `accessToken` 值。粘贴完整的 JWT Access Token 后按 Enter。输入内容会直接显示，以便确认 Token 是否完整粘贴。请不要在 Token 两侧添加引号，也不要在终端可能被他人看到、共享或录制时运行程序。
 
 成功运行时会看到类似输出：
 
 ```text
-Authentication token:
+Network proxy: direct (no valid HTTPS proxy environment variable)
+Get your access token from https://chatgpt.com/api/auth/session while signed in to ChatGPT.
+Paste access token (input is visible): eyJ...
 Registering Agent Identity with OpenAI...
 Created agent-identity-person_example.com-team.json
 ```
@@ -85,7 +89,13 @@ Created agent-identity-person_example.com-team.json
 
 ## 通过环境变量设置网络代理
 
-程序使用的 HTTP 客户端会自动读取标准代理环境变量，不需要提供额外的代理命令行参数。
+程序使用的 HTTP 客户端会自动读取标准代理环境变量，不需要提供额外的代理命令行参数。程序启动时会输出固定 `auth.openai.com` HTTPS 请求实际选中的代理，例如：
+
+```text
+Network proxy: HTTPS_PROXY=http://127.0.0.1:7890
+```
+
+如果没有适用的代理，或者 `NO_PROXY` 排除了 `auth.openai.com`，程序会提示使用直连。对于带认证信息的代理 URL，状态提示会把用户信息替换为 `***`，不会输出代理用户名和密码。
 
 注册接口使用 HTTPS，因此最常用的是 `HTTPS_PROXY`：
 
@@ -216,7 +226,7 @@ agent-identity-person_work_example.com-team___annual.json
 
 ## 安全说明
 
-- 只在隐藏输入提示中提供 Token。不要把 Token 写入命令历史、脚本、截图、Issue 或命令行参数。
+- Token 输入内容可见。请在私密终端中运行，必要时在运行后清理终端，不要通过屏幕共享、录屏、截图、Issue 或命令行参数暴露 Token。
 - 程序运行时使用可清零内存保存 Token，并且不会把 Token 写入生成的 JSON。
 - 生成的 JSON 含有可复用私钥，应把整个文件视为敏感凭据。
 - 按项目要求，程序不会主动修改输出文件权限。请根据操作系统和运行环境自行保护文件。
@@ -227,7 +237,7 @@ agent-identity-person_work_example.com-team___annual.json
 
 ### `token must be a three-part JWT`
 
-输入内容为空、不完整、带有引号，或者不是 JWT Access Token。请提供完整的 `header.payload.signature`，不要添加引号。
+输入内容为空、不完整、带有引号，或者不是 JWT Access Token。登录 ChatGPT 后打开 <https://chatgpt.com/api/auth/session>，复制完整的 `accessToken` 值；它应为 `header.payload.signature` 格式，输入时不要添加引号。
 
 ### `token has expired`
 

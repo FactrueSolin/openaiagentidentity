@@ -6,7 +6,7 @@ English | [简体中文](README.zh.md)
 
 ## What it does
 
-1. Reads one access token from a hidden terminal prompt.
+1. Reads one access token from a visible terminal prompt.
 2. Validates the three-part JWT structure, encoding, JSON claims, and expiration time.
 3. Extracts the account ID, ChatGPT user ID, email, plan type, and FedRAMP flag.
 4. Generates a random Ed25519 key pair locally.
@@ -25,7 +25,7 @@ The access token is never accepted as a command-line argument and is not written
   https://auth.openai.com/api/accounts/v1/agent/register
   ```
 
-This program does not perform a ChatGPT login or obtain an access token for you.
+This program does not perform a ChatGPT login or obtain an access token for you. While signed in to ChatGPT, open <https://chatgpt.com/api/auth/session> in your browser and copy the value of the `accessToken` field from the returned JSON. The token is sensitive and should only be used for an account you are authorized to access.
 
 ## Build
 
@@ -65,18 +65,22 @@ Windows PowerShell:
 .\target\release\agentidentity.exe
 ```
 
-The program displays a hidden input prompt:
+At startup, the program prints the network proxy selected for the OpenAI HTTPS request and then displays the token instructions and prompt:
 
 ```text
-Authentication token:
+Network proxy: HTTPS_PROXY=http://127.0.0.1:7890
+Get your access token from https://chatgpt.com/api/auth/session while signed in to ChatGPT.
+Paste access token (input is visible):
 ```
 
-Paste the complete JWT access token and press Enter. The terminal will not display the token while it is being entered. Do not add quotes around it.
+Open <https://chatgpt.com/api/auth/session> while signed in to ChatGPT, copy the `accessToken` value from the returned JSON, paste the complete JWT access token, and press Enter. Input is intentionally visible so you can verify that the entire token was pasted. Do not add quotes around it, and avoid running the program where the terminal can be observed or recorded.
 
 A successful run looks similar to:
 
 ```text
-Authentication token:
+Network proxy: direct (no valid HTTPS proxy environment variable)
+Get your access token from https://chatgpt.com/api/auth/session while signed in to ChatGPT.
+Paste access token (input is visible): eyJ...
 Registering Agent Identity with OpenAI...
 Created agent-identity-person_example.com-team.json
 ```
@@ -85,7 +89,13 @@ The output file is created in the directory from which the executable was starte
 
 ## Using a network proxy
 
-The HTTP client reads standard proxy environment variables automatically. No command-line proxy option is required.
+The HTTP client reads standard proxy environment variables automatically. No command-line proxy option is required. At startup, the program reports the proxy selected for the fixed `auth.openai.com` HTTPS request, for example:
+
+```text
+Network proxy: HTTPS_PROXY=http://127.0.0.1:7890
+```
+
+If no applicable proxy is configured, or `NO_PROXY` bypasses `auth.openai.com`, it reports a direct connection. User information in authenticated proxy URLs is replaced with `***` in this status line so the proxy username and password are not printed.
 
 Because the registration endpoint uses HTTPS, `HTTPS_PROXY` is the most relevant variable:
 
@@ -216,7 +226,7 @@ Version 0.1 does not create or include a `task_id`.
 
 ## Security notes
 
-- Enter the token only at the hidden prompt. Do not place it in shell history, scripts, screenshots, issue reports, or command-line arguments.
+- Token input is visible. Run the program in a private terminal, clear the terminal afterward if needed, and do not expose the token through screen sharing, recording, screenshots, issue reports, or command-line arguments.
 - The token is kept in zeroizing memory while the program runs and is not saved in the generated JSON.
 - The generated JSON contains a reusable private key. Treat the entire file as a secret.
 - The program intentionally does not change file permissions. Protect the output according to your operating system and environment.
@@ -227,7 +237,7 @@ Version 0.1 does not create or include a `task_id`.
 
 ### `token must be a three-part JWT`
 
-The entered value is empty, truncated, quoted, or is not a JWT access token. Enter the complete `header.payload.signature` value without quotes.
+The entered value is empty, truncated, quoted, or is not a JWT access token. While signed in to ChatGPT, open <https://chatgpt.com/api/auth/session>, copy the complete `accessToken` value in `header.payload.signature` form, and enter it without quotes.
 
 ### `token has expired`
 

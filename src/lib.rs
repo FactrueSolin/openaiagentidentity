@@ -1,5 +1,5 @@
 use std::fs::{File, OpenOptions};
-use std::io::Write as _;
+use std::io::{BufRead, Write as _};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, ensure};
@@ -13,6 +13,142 @@ use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
 const OPENAI_AGENT_REGISTRATION_BASE_URL: &str = "https://auth.openai.com/api/accounts";
+const CHATGPT_SESSION_URL: &str = "https://chatgpt.com/api/auth/session";
+
+pub fn read_access_token(
+    input: &mut impl BufRead,
+    output: &mut impl std::io::Write,
+) -> Result<Zeroizing<String>> {
+    writeln!(
+        output,
+        "Get your access token from {CHATGPT_SESSION_URL} while signed in to ChatGPT."
+    )
+    .context("failed to write access token instructions")?;
+    write!(output, "Paste access token (input is visible): ")
+        .context("failed to write access token prompt")?;
+    output
+        .flush()
+        .context("failed to flush access token prompt")?;
+
+    let mut entered = Zeroizing::new(String::new());
+    input
+        .read_line(&mut entered)
+        .context("failed to read access token")?;
+    let token = Zeroizing::new(entered.trim().to_owned());
+    ensure!(!token.is_empty(), "access token cannot be empty");
+    Ok(token)
+}
+
+struct ProxyConfiguration {
+    proxy: Option<reqwest::Proxy>,
+    description: String,
+}
+
+fn proxy_configuration_from(
+    is_cgi: bool,
+    mut get_env: impl FnMut(&str) -> Option<String>,
+) -> ProxyConfiguration {
+    if is_cgi {
+        return direct_proxy_configuration("REQUEST_METHOD disables environment proxies");
+    }
+
+    let registration_host = reqwest::Url::parse(OPENAI_AGENT_REGISTRATION_BASE_URL)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+        .expect("the fixed OpenAI registration URL must contain a host");
+    let no_proxy = first_environment_value(&mut get_env, &["NO_PROXY", "no_proxy"]);
+    if no_proxy
+        .as_ref()
+        .is_some_and(|(_, value)| no_proxy_bypasses_host(value, &registration_host))
+    {
+        return direct_proxy_configuration(&format!("NO_PROXY bypasses {registration_host}"));
+    }
+
+    first_proxy_configuration(&mut get_env, &["HTTPS_PROXY", "https_proxy"])
+        .or_else(|| first_proxy_configuration(&mut get_env, &["ALL_PROXY", "all_proxy"]))
+        .unwrap_or_else(|| direct_proxy_configuration("no valid HTTPS proxy environment variable"))
+}
+
+fn direct_proxy_configuration(reason: &str) -> ProxyConfiguration {
+    ProxyConfiguration {
+        proxy: None,
+        description: format!("Network proxy: direct ({reason})"),
+    }
+}
+
+fn first_environment_value(
+    get_env: &mut impl FnMut(&str) -> Option<String>,
+    names: &[&'static str],
+) -> Option<(&'static str, String)> {
+    names
+        .iter()
+        .find_map(|&name| get_env(name).map(|value| (name, value)))
+}
+
+fn first_proxy_configuration(
+    get_env: &mut impl FnMut(&str) -> Option<String>,
+    names: &[&'static str],
+) -> Option<ProxyConfiguration> {
+    let (name, value) = first_environment_value(get_env, names)?;
+    let normalized = normalize_proxy_url(&value)?;
+    let url = reqwest::Url::parse(&normalized).ok()?;
+    if !matches!(url.scheme(), "http" | "https") || url.host().is_none() {
+        return None;
+    }
+
+    let proxy = reqwest::Proxy::https(normalized).ok()?;
+    Some(ProxyConfiguration {
+        proxy: Some(proxy),
+        description: format!("Network proxy: {name}={}", safe_proxy_url(&url)),
+    })
+}
+
+fn normalize_proxy_url(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        None
+    } else if value.contains("://") {
+        Some(value.to_string())
+    } else {
+        Some(format!("http://{value}"))
+    }
+}
+
+fn safe_proxy_url(url: &reqwest::Url) -> String {
+    let credentials = if url.username().is_empty() && url.password().is_none() {
+        ""
+    } else {
+        "***@"
+    };
+    let host = match url.host_str() {
+        Some(host) if host.contains(':') => format!("[{host}]"),
+        Some(host) => host.to_string(),
+        None => return "invalid proxy".to_string(),
+    };
+    let port = url
+        .port()
+        .map_or_else(String::new, |port| format!(":{port}"));
+
+    format!("{}://{credentials}{host}{port}", url.scheme())
+}
+
+fn no_proxy_bypasses_host(value: &str, host: &str) -> bool {
+    value.split(',').map(str::trim).any(|entry| {
+        if entry == "*" {
+            return true;
+        }
+
+        let domain = entry.strip_prefix('.').unwrap_or(entry);
+        !domain.is_empty()
+            && (host.eq_ignore_ascii_case(domain)
+                || host
+                    .get(host.len().saturating_sub(domain.len())..)
+                    .is_some_and(|suffix| {
+                        suffix.eq_ignore_ascii_case(domain)
+                            && host.as_bytes().get(host.len() - domain.len() - 1) == Some(&b'.')
+                    }))
+    })
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccountClaims {
@@ -119,19 +255,29 @@ fn append_ssh_string(output: &mut Vec<u8>, value: &[u8]) {
     output.extend_from_slice(value);
 }
 
-pub fn build_registration_client() -> Result<reqwest::blocking::Client> {
-    build_registration_client_with_https_only(true)
+pub fn build_registration_client() -> Result<(reqwest::blocking::Client, String)> {
+    let proxy_configuration =
+        proxy_configuration_from(std::env::var_os("REQUEST_METHOD").is_some(), |name| {
+            std::env::var(name).ok()
+        });
+    let client = build_registration_client_with_https_only(true, proxy_configuration.proxy)?;
+    Ok((client, proxy_configuration.description))
 }
 
 fn build_registration_client_with_https_only(
     https_only: bool,
+    proxy: Option<reqwest::Proxy>,
 ) -> Result<reqwest::blocking::Client> {
-    reqwest::blocking::Client::builder()
+    let mut builder = reqwest::blocking::Client::builder()
         .https_only(https_only)
+        .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
-        .user_agent(concat!("agentidentity/", env!("CARGO_PKG_VERSION")))
-        .build()
-        .context("failed to initialize HTTPS client")
+        .user_agent(concat!("agentidentity/", env!("CARGO_PKG_VERSION")));
+    if let Some(proxy) = proxy {
+        builder = builder.proxy(proxy);
+    }
+
+    builder.build().context("failed to initialize HTTPS client")
 }
 
 pub fn register_with_openai(
@@ -348,7 +494,7 @@ pub fn parse_account_claims(token: &str) -> Result<AccountClaims> {
 mod tests {
     use base64::Engine as _;
     use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
-    use std::io::{Read, Write};
+    use std::io::{Cursor, Read, Write};
     use std::net::TcpListener;
     use std::thread;
 
@@ -363,6 +509,87 @@ mod tests {
         let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&payload).unwrap());
         let signature = URL_SAFE_NO_PAD.encode(b"signature");
         format!("{header}.{payload}.{signature}")
+    }
+
+    #[test]
+    fn reads_a_visible_access_token_and_explains_where_to_get_it() {
+        let mut input = Cursor::new(b"  header.payload.signature  \n");
+        let mut output = Vec::new();
+
+        let token = read_access_token(&mut input, &mut output).unwrap();
+        let output = String::from_utf8(output).unwrap();
+
+        assert_eq!(token.as_str(), "header.payload.signature");
+        assert!(output.contains("https://chatgpt.com/api/auth/session"));
+        assert!(output.contains("input is visible"));
+    }
+
+    #[test]
+    fn reports_the_https_proxy_without_credentials_or_url_secrets() {
+        let configuration = proxy_configuration_from(false, |name| match name {
+            "HTTPS_PROXY" => {
+                Some("http://alice:secret@127.0.0.1:7890/connect?token=hidden".to_string())
+            }
+            "ALL_PROXY" => Some("http://fallback.example:8080".to_string()),
+            _ => None,
+        });
+
+        assert!(configuration.proxy.is_some());
+        assert_eq!(
+            configuration.description,
+            "Network proxy: HTTPS_PROXY=http://***@127.0.0.1:7890"
+        );
+        assert!(!configuration.description.contains("alice"));
+        assert!(!configuration.description.contains("secret"));
+        assert!(!configuration.description.contains("hidden"));
+    }
+
+    #[test]
+    fn reports_all_proxy_fallback_and_no_proxy_bypass() {
+        let fallback = proxy_configuration_from(false, |name| match name {
+            "ALL_PROXY" => Some("127.0.0.1:8080".to_string()),
+            _ => None,
+        });
+        assert!(fallback.proxy.is_some());
+        assert_eq!(
+            fallback.description,
+            "Network proxy: ALL_PROXY=http://127.0.0.1:8080"
+        );
+
+        let bypassed = proxy_configuration_from(false, |name| match name {
+            "HTTPS_PROXY" => Some("http://127.0.0.1:7890".to_string()),
+            "NO_PROXY" => Some("localhost, .openai.com".to_string()),
+            _ => None,
+        });
+        assert!(bypassed.proxy.is_none());
+        assert_eq!(
+            bypassed.description,
+            "Network proxy: direct (NO_PROXY bypasses auth.openai.com)"
+        );
+    }
+
+    #[test]
+    fn cgi_environment_disables_proxies_and_invalid_https_proxy_uses_fallback() {
+        let cgi = proxy_configuration_from(true, |name| match name {
+            "HTTPS_PROXY" => Some("http://127.0.0.1:7890".to_string()),
+            _ => None,
+        });
+        assert!(cgi.proxy.is_none());
+        assert_eq!(
+            cgi.description,
+            "Network proxy: direct (REQUEST_METHOD disables environment proxies)"
+        );
+
+        let fallback = proxy_configuration_from(false, |name| match name {
+            "HTTPS_PROXY" => Some("ftp://invalid.example".to_string()),
+            "ALL_PROXY" => Some("http://fallback.example:8080".to_string()),
+            _ => None,
+        });
+        assert!(fallback.proxy.is_some());
+        assert_eq!(
+            fallback.description,
+            "Network proxy: ALL_PROXY=http://fallback.example:8080"
+        );
     }
 
     #[test]
@@ -638,7 +865,7 @@ mod tests {
                 .unwrap();
         });
         let key_material = generate_key_material().unwrap();
-        let client = build_registration_client_with_https_only(false).unwrap();
+        let client = build_registration_client_with_https_only(false, None).unwrap();
 
         let error = register_agent_identity(
             &client,
