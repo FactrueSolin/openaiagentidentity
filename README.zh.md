@@ -4,6 +4,8 @@
 
 `agentidentity` 提供 Web 应用和命令行应用。两者都接受由用户手动提供的 ChatGPT JWT Access Token，用于注册 OpenAI Agent Runtime，并生成一份可复用的 Agent Identity JSON 文档。
 
+**在线体验：** <https://identity.cd.actrue.cn/>
+
 ## Web 应用
 
 ### 架构与数据边界

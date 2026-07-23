@@ -4,6 +4,8 @@ English | [简体中文](README.zh.md)
 
 `agentidentity` provides a Web application and a command-line application for registering an OpenAI Agent Runtime from a manually supplied ChatGPT JWT access token and producing a reusable Agent Identity JSON document.
 
+**Try it online:** <https://identity.cd.actrue.cn/>
+
 ## Web application
 
 ### Architecture and data boundary
